@@ -52,34 +52,30 @@ int getProcID(const std::string p_name, Napi::Env env)
 		}
 	}
 	CloseHandle(snapshot);
-	Napi::TypeError::New(env, "Unable to find process id").ThrowAsJavaScriptException();
 	return 0;
 
 }
 
-bool injectDLL(const std::string DLL_Path, const int pid, Napi::Env env)
+int injectDLL(const std::string DLL_Path, const int pid, Napi::Env env)
 {
 	long dll_size = DLL_Path.length() + 1;
 	HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
 
 	if (hProc == NULL)
 	{
-		Napi::TypeError::New(env, "Failed to open target process").ThrowAsJavaScriptException();
-		return false;
+		return 1;
 	}
 
 	LPVOID MyAlloc = VirtualAllocEx(hProc, NULL, dll_size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 	if (MyAlloc == NULL)
 	{
-		Napi::TypeError::New(env, "Failed to allocate memory in target process").ThrowAsJavaScriptException();
-		return false;
+		return 2;
 	}
 
 	int IsWriteOK = WriteProcessMemory(hProc , MyAlloc, DLL_Path.c_str() , dll_size, 0);
 	if (IsWriteOK == 0)
 	{
-		Napi::TypeError::New(env, "Failed to write in target process memory").ThrowAsJavaScriptException();
-		return false;
+		return 3;
 	}
 
 	DWORD dWord;
@@ -87,16 +83,15 @@ bool injectDLL(const std::string DLL_Path, const int pid, Napi::Env env)
 	HANDLE ThreadReturn = CreateRemoteThread(hProc, NULL, 0, addrLoadLibrary, MyAlloc, 0, &dWord);
 	if (ThreadReturn == NULL)
 	{
-		Napi::TypeError::New(env, "Failed to create remote thread").ThrowAsJavaScriptException();
-		return false;
+		return 4;
 	}
 
 	if ((hProc != NULL) && (MyAlloc != NULL) && (IsWriteOK != ERROR_INVALID_HANDLE) && (ThreadReturn != NULL))
 	{
-		return true;
+		return 5;
 	}
 
-	return false;
+	return 6;
 }
 
 
@@ -104,7 +99,7 @@ int dllInject::inject(std::string pathToDll, std::string processName, Napi::Env 
 {
 	int procID = getProcID(processName, env);
 	int result = injectDLL(pathToDll, procID, env);
-	return 0;
+	return result;
 }	
 int dllInject::execute(std::string pathToExe)
 {
@@ -126,7 +121,7 @@ Napi::Number dllInject::injectWrapped(const Napi::CallbackInfo& info)
 	Napi::String newPath = Napi::String::New(env, path);
 	
 	int result = dllInject::inject(newPath, procName, env);
-	return Napi::Number::New(env, 1);
+	return Napi::Number::New(env, result);
 }
 
 Napi::Number dllInject::executeWrapped(const Napi::CallbackInfo& info)
